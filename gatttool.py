@@ -125,7 +125,7 @@ class GATTToolReceiver(threading.Thread):
         log.info('Running...')
         while self._parent_aliveness.is_set():
             try:
-                event_index = self._connection.expect(patterns, timeout=.5)
+                event_index = self._connection.expect(patterns, timeout=10.5)
             except pexpect.TIMEOUT:
                 continue
             except (NotConnectedError, pexpect.EOF):
@@ -149,7 +149,7 @@ class GATTToolReceiver(threading.Thread):
     def is_set(self, event):
         return self._event_vector[event]["event"].is_set()
 
-    def wait(self, event, timeout=None):
+    def wait(self, event, timeout=20):
         """
         Wait for event to be trigerred
         """
@@ -581,7 +581,7 @@ class GATTToolBackend(BLEBackend):
         log.info('Sent cmd=%s', cmd)
 
     @at_most_one_device
-    def char_read(self, uuid, timeout=1):
+    def char_read(self, uuid, timeout=10):
         """
         Reads a Characteristic by uuid.
         :param uuid: UUID of Characteristic to read.
@@ -595,7 +595,7 @@ class GATTToolBackend(BLEBackend):
         return bytearray([int(x, 16) for x in rval])
 
     @at_most_one_device
-    def char_read_handle(self, handle, timeout=4):
+    def char_read_handle(self, handle, timeout=40):
         """
         Reads a Characteristic by handle.
         :param handle: handle of Characteristic to read.
@@ -610,7 +610,7 @@ class GATTToolBackend(BLEBackend):
         return bytearray([int(x, 16) for x in rval])
 
     @at_most_one_device
-    def exchange_mtu(self, mtu, timeout=1):
+    def exchange_mtu(self, mtu, timeout=10):
         cmd = 'mtu {}'.format(mtu)
 
         log.debug('Requesting MTU: {}'.format(mtu))

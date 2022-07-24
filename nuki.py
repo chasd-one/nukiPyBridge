@@ -13,6 +13,7 @@ import bluetooth._bluetooth as bluez
 from pathlib import Path
 from retry import retry
 
+
 class Nuki():
     # creates BLE connection with NUKI
     #	-macAddress: bluetooth mac-address of your Nuki Lock
@@ -34,7 +35,7 @@ class Nuki():
             nukiBleConnectionReady = False
             while (nukiBleConnectionReady == False and currentTries < retries):
                 print("Starting BLE adapter...")
-                adapter.start()
+                adapter.start(False)
                 print("Init Nuki BLE connection...")
                 try:
                     self.device = adapter.connect(self.macAddress)
@@ -64,7 +65,8 @@ class Nuki():
         print("isNewNukiStateAvailable() -> search through %d received beacons..." % len(returnedList))
         for beacon in returnedList:
             beaconElements = beacon.split(',')
-            if beaconElements[0] == self.macAddress.lower() and beaconElements[1] == "a92ee200550111e4916c0800200c9a66":
+            if beaconElements[0] == self.macAddress.lower() and (
+                    beaconElements[1] == "a92ee200550111e4916c0800200c9a66" or beaconElements[1] == "a92ae200550111e4916c0800200c9a66"):
                 print("Nuki beacon found, new state element: %s" % beaconElements[4])
                 if beaconElements[4] == '-60':
                     newStateAvailable = 0
@@ -86,20 +88,24 @@ class Nuki():
     #	-ID : a unique number to identify yourself to the Nuki Lock
     #	-IDType : '00' for 'app', '01' for 'bridge' and '02' for 'fob'
     #	-name : a unique name to identify yourself to the Nuki Lock (will also appear in the logs of the Nuki Lock)
-    def authenticateUser(self, publicKeyHex, privateKeyHex, ID, IDType, name):
+    #   -DeviceType : 'sl' for Smart Lock, 'op' for Opener
+    def authenticateUser(self, publicKeyHex, privateKeyHex, ID, IDType, name, DeviceType):
         self._makeBLEConnection()
         if self.device == None:
             return
         self.config.remove_section(self.macAddress)
         self.config.add_section(self.macAddress)
-        pairingHandle = self.device.get_handle('a92ee101-5501-11e4-916c-0800200c9a66')
+        pairingHandle = self.device.get_handle(
+            'a92ae101-5501-11e4-916c-0800200c9a66' if DeviceType == 'op' else 'a92ee101-5501-11e4-916c-0800200c9a66')
         print("Nuki Pairing UUID handle created: %04x" % pairingHandle)
         publicKeyReq = nuki_messages.Nuki_REQ('0003')
-        self.device.subscribe('a92ee101-5501-11e4-916c-0800200c9a66', self._handleCharWriteResponse, indication=True)
+        self.device.subscribe(
+            'a92ae101-5501-11e4-916c-0800200c9a66' if DeviceType == 'op' else 'a92ee101-5501-11e4-916c-0800200c9a66',
+            self._handleCharWriteResponse, indication=True)
         publicKeyReqCommand = publicKeyReq.generate()
         self._charWriteResponse = ""
         print("Requesting Nuki Public Key using command: %s" % publicKeyReq.show())
-        self.device.char_write_handle(pairingHandle, publicKeyReqCommand, True, 2)
+        self.device.char_write_handle(pairingHandle, publicKeyReqCommand, True, 20)
         print("Nuki Public key requested")
         time.sleep(2)
         commandParsed = self.parser.parse(self._charWriteResponse)
@@ -114,12 +120,13 @@ class Nuki():
         self.config.set(self.macAddress, 'ID', ID)
         self.config.set(self.macAddress, 'IDType', IDType)
         self.config.set(self.macAddress, 'Name', name)
+        self.config.set(self.macAddress, 'DeviceType', DeviceType)
         print("Public key received: %s" % commandParsed.publicKey)
         publicKeyPush = nuki_messages.Nuki_PUBLIC_KEY(publicKeyHex)
         publicKeyPushCommand = publicKeyPush.generate()
         print("Pushing Public Key using command: %s" % publicKeyPush.show())
         self._charWriteResponse = ""
-        self.device.char_write_handle(pairingHandle, publicKeyPushCommand, True, 5)
+        self.device.char_write_handle(pairingHandle, publicKeyPushCommand, True, 20)
         print("Public key pushed")
         time.sleep(2)
         commandParsed = self.parser.parse(self._charWriteResponse)
@@ -133,7 +140,7 @@ class Nuki():
         authAuthenticator.createPayload(nonceNuki, privateKeyHex, publicKeyHex, publicKeyNuki)
         authAuthenticatorCommand = authAuthenticator.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(pairingHandle, authAuthenticatorCommand, True, 5)
+        self.device.char_write_handle(pairingHandle, authAuthenticatorCommand, True, 20)
         print("Authorization Authenticator sent: %s" % authAuthenticator.show())
         time.sleep(2)
         commandParsed = self.parser.parse(self._charWriteResponse)
@@ -147,7 +154,7 @@ class Nuki():
         authData.createPayload(publicKeyNuki, privateKeyHex, publicKeyHex, nonceNuki, ID, IDType, name)
         authDataCommand = authData.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(pairingHandle, authDataCommand, True, 7)
+        self.device.char_write_handle(pairingHandle, authDataCommand, True, 20)
         print("Authorization Data sent: %s" % authData.show())
         time.sleep(2)
         commandParsed = self.parser.parse(self._charWriteResponse)
@@ -164,7 +171,7 @@ class Nuki():
         authIDConfirm.createPayload(publicKeyNuki, privateKeyHex, publicKeyHex, nonceNuki, authId)
         authIDConfirmCommand = authIDConfirm.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(pairingHandle, authIDConfirmCommand, True, 7)
+        self.device.char_write_handle(pairingHandle, authIDConfirmCommand, True, 20)
         print("Authorization ID Confirmation sent: %s" % authIDConfirm.show())
         time.sleep(2)
         commandParsed = self.parser.parse(self._charWriteResponse)
@@ -182,7 +189,7 @@ class Nuki():
         self._makeBLEConnection()
         if self.device == None:
             return
-        
+
         keyturnerUSDIOHandle = self.getHandle()
         self.executeChallenge('000C', keyturnerUSDIOHandle)
         commandParsed = self.parseChallengeResponse('000C')
@@ -195,7 +202,7 @@ class Nuki():
         self._makeBLEConnection()
         if self.device == None:
             return
-        
+
         keyturnerUSDIOHandle = self.getHandle()
         self.executeChallenge('0004', keyturnerUSDIOHandle)
         commandParsed = self.parseChallengeResponse('0004')
@@ -207,12 +214,16 @@ class Nuki():
     @retry(Exception, tries=8, delay=0.5)
     def getHandle(self):
         print("Retrieving handle")
-        keyturnerUSDIOHandle = self.device.get_handle("a92ee202-5501-11e4-916c-0800200c9a66")
+        keyturnerUSDIOHandle = self.device.get_handle(
+            'a92ae202-5501-11e4-916c-0800200c9a66' if self.config.get(self.macAddress,
+                                                                      'DeviceType') == 'op' else 'a92ee202-5501-11e4-916c-0800200c9a66')
         print("Handle retrieved")
-        self.device.subscribe('a92ee202-5501-11e4-916c-0800200c9a66', self._handleCharWriteResponse, indication=True)
+        self.device.subscribe('a92ae202-5501-11e4-916c-0800200c9a66' if self.config.get(self.macAddress,
+                                                                                        'DeviceType') == 'op' else 'a92ee202-5501-11e4-916c-0800200c9a66',
+                              self._handleCharWriteResponse, indication=True)
         print("Subscribed to device")
         return keyturnerUSDIOHandle
-    
+
     @retry(Exception, tries=8, delay=0.5)
     def executeChallenge(self, request, keyturnerUSDIOHandle):
         print("Going to execute challenge")
@@ -223,7 +234,7 @@ class Nuki():
             privateKey=self.config.get(self.macAddress, 'privateKeyHex'))
         challengeReqEncryptedCommand = challengeReqEncrypted.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(keyturnerUSDIOHandle, challengeReqEncryptedCommand, True, 4)
+        self.device.char_write_handle(keyturnerUSDIOHandle, challengeReqEncryptedCommand, True)
         print("Nuki CHALLENGE Request sent: %s" % challengeReq.show())
 
     @retry(Exception, tries=8, delay=0.5)
@@ -247,7 +258,7 @@ class Nuki():
             privateKey=self.config.get(self.macAddress, 'privateKeyHex'))
         lockActionReqEncryptedCommand = lockActionReqEncrypted.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(keyturnerUSDIOHandle, lockActionReqEncryptedCommand, True, 4)
+        self.device.char_write_handle(keyturnerUSDIOHandle, lockActionReqEncryptedCommand, True, 20)
         print("Nuki Lock Action Request sent: %s" % lockActionReq.show())
 
     @retry(Exception, tries=8, delay=0.5)
@@ -262,8 +273,12 @@ class Nuki():
     #	-pinHex : a 2-byte hex string representation of the PIN code you have set on your Nuki Lock (default is 0000)
     def getLogEntriesCount(self, pinHex):
         self._makeBLEConnection()
-        keyturnerUSDIOHandle = self.device.get_handle("a92ee202-5501-11e4-916c-0800200c9a66")
-        self.device.subscribe('a92ee202-5501-11e4-916c-0800200c9a66', self._handleCharWriteResponse, indication=True)
+        keyturnerUSDIOHandle = self.device.get_handle(
+            'a92ae202-5501-11e4-916c-0800200c9a66' if self.config.get(self.macAddress,
+                                                                      'DeviceType') == 'op' else 'a92ee202-5501-11e4-916c-0800200c9a66')
+        self.device.subscribe('a92ae202-5501-11e4-916c-0800200c9a66' if self.config.get(self.macAddress,
+                                                                                        'DeviceType') == 'op' else 'a92ee202-5501-11e4-916c-0800200c9a66',
+                              self._handleCharWriteResponse, indication=True)
         challengeReq = nuki_messages.Nuki_REQ('0004')
         challengeReqEncrypted = nuki_messages.Nuki_EncryptedCommand(
             authID=self.config.get(self.macAddress, 'authorizationID'), nukiCommand=challengeReq,
@@ -272,7 +287,7 @@ class Nuki():
         challengeReqEncryptedCommand = challengeReqEncrypted.generate()
         self._charWriteResponse = ""
         print("Requesting CHALLENGE: %s" % challengeReqEncrypted.generate("HEX"))
-        self.device.char_write_handle(keyturnerUSDIOHandle, challengeReqEncryptedCommand, True, 5)
+        self.device.char_write_handle(keyturnerUSDIOHandle, challengeReqEncryptedCommand, True, 20)
         print("Nuki CHALLENGE Request sent: %s" % challengeReq.show())
         # time.sleep(2)
         commandParsed = self.parser.decrypt(self._charWriteResponse, self.config.get(self.macAddress, 'publicKeyNuki'),
@@ -291,7 +306,7 @@ class Nuki():
             privateKey=self.config.get(self.macAddress, 'privateKeyHex'))
         logEntriesReqEncryptedCommand = logEntriesReqEncrypted.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(keyturnerUSDIOHandle, logEntriesReqEncryptedCommand, True, 4)
+        self.device.char_write_handle(keyturnerUSDIOHandle, logEntriesReqEncryptedCommand, True, 20)
         print("Nuki Log Entries Request sent: %s" % logEntriesReq.show())
         # time.sleep(2)
         commandParsed = self.parser.decrypt(self._charWriteResponse, self.config.get(self.macAddress, 'publicKeyNuki'),
@@ -307,10 +322,14 @@ class Nuki():
     # method to fetch the most recent log entries from your Nuki Lock
     #	-count: the number of entries you would like to fetch (if available)
     #	-pinHex : a 2-byte hex string representation of the PIN code you have set on your Nuki Lock (default is 0000)
-    def getLogEntries(self, count, pinHex):
+    def getLogEntries(self, count, pinHex, DeviceType):
         self._makeBLEConnection()
-        keyturnerUSDIOHandle = self.device.get_handle("a92ee202-5501-11e4-916c-0800200c9a66")
-        self.device.subscribe('a92ee202-5501-11e4-916c-0800200c9a66', self._handleCharWriteResponse, indication=True)
+        keyturnerUSDIOHandle = self.device.get_handle(
+            'a92ae202-5501-11e4-916c-0800200c9a66' if self.config.get(self.macAddress,
+                                                                      'DeviceType') == 'op' else 'a92ee202-5501-11e4-916c-0800200c9a66')
+        self.device.subscribe('a92ae202-5501-11e4-916c-0800200c9a66' if self.config.get(self.macAddress,
+                                                                                        'DeviceType') == 'op' else 'a92ee202-5501-11e4-916c-0800200c9a66',
+                              self._handleCharWriteResponse, indication=True)
         challengeReq = nuki_messages.Nuki_REQ('0004')
         challengeReqEncrypted = nuki_messages.Nuki_EncryptedCommand(
             authID=self.config.get(self.macAddress, 'authorizationID'), nukiCommand=challengeReq,
@@ -319,7 +338,7 @@ class Nuki():
         challengeReqEncryptedCommand = challengeReqEncrypted.generate()
         print("Requesting CHALLENGE: %s" % challengeReqEncrypted.generate("HEX"))
         self._charWriteResponse = ""
-        self.device.char_write_handle(keyturnerUSDIOHandle, challengeReqEncryptedCommand, True, 5)
+        self.device.char_write_handle(keyturnerUSDIOHandle, challengeReqEncryptedCommand, True, 20)
         print("Nuki CHALLENGE Request sent: %s" % challengeReq.show())
         # time.sleep(2)
         commandParsed = self.parser.decrypt(self._charWriteResponse, self.config.get(self.macAddress, 'publicKeyNuki'),
@@ -338,7 +357,7 @@ class Nuki():
             privateKey=self.config.get(self.macAddress, 'privateKeyHex'))
         logEntriesReqEncryptedCommand = logEntriesReqEncrypted.generate()
         self._charWriteResponse = ""
-        self.device.char_write_handle(keyturnerUSDIOHandle, logEntriesReqEncryptedCommand, True, 6)
+        self.device.char_write_handle(keyturnerUSDIOHandle, logEntriesReqEncryptedCommand, True, 20)
         print("Nuki Log Entries Request sent: %s" % logEntriesReq.show())
         # time.sleep(2)
         messages = self.parser.splitEncryptedMessages(self._charWriteResponse)

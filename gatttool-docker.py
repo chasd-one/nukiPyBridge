@@ -121,7 +121,7 @@ class GATTToolReceiver(threading.Thread):
   def is_set(self, event):
     return self._event_vector[event]["event"].is_set()
 
-  def wait(self, event, timeout=None):
+  def wait(self, event, timeout=20):
     """
     Wait for event to be trigerred
     """
@@ -424,11 +424,11 @@ class GATTToolBackend(BLEBackend):
       self._receiver.clear("indication")
       self.sendline(cmd)
       try:
-        self._receiver.wait("char_written", timeout=5)
+        self._receiver.wait("char_written", timeout=50)
         waitingForIndications = True
         while waitingForIndications == True:
           try:
-            self._receiver.wait("indication", timeout=2)
+            self._receiver.wait("indication", timeout=20)
             self._receiver.clear("indication")
           except NotificationTimeout:
             waitingForIndications = False
@@ -449,7 +449,7 @@ class GATTToolBackend(BLEBackend):
     :return: bytearray of result.
     :rtype: bytearray
     """
-    with self._receiver.event("value", timeout=1):
+    with self._receiver.event("value", timeout=10):
       self.sendline('char-read-uuid %s' % uuid)
     rval = self._receiver.last_value("value", "after").split()[1:]
     return bytearray([int(x, 16) for x in rval])

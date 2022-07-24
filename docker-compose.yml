@@ -1,7 +1,10 @@
 version: "2"
 services:
     nuki:
-        image: giejay/nuki-bridge
+#        image: giejay/nuki-bridge
+        build:
+          context: .
+          dockerfile: ./Dockerfile
         environment:
           - PYTHONUNBUFFERED=true
           - FLASK_RUN_PORT=5000

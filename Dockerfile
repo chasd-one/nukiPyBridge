@@ -10,14 +10,15 @@ RUN apt-get update && apt-get install -y \
     bluez \
     libbluetooth-dev \
     libffi-dev \
-libusb-dev \
-libdbus-1-dev \
-libglib2.0-dev \
-libudev-dev \
-libical-dev \
-libreadline-dev \
+    libusb-dev \
+    libdbus-1-dev \
+    libglib2.0-dev \
+    libudev-dev \
+    libical-dev \
+    libreadline-dev \
     libboost-python-dev \
-    git \ 
+    git \
+    ca-certificates \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
@@ -29,7 +30,7 @@ RUN pip3 install pexpect
 RUN apt-get update && apt-get install -y wget
 
 RUN mkdir /tmp/bluez
-RUN wget http://www.kernel.org/pub/linux/bluetooth/bluez-5.54.tar.xz -O /tmp/bluez/bluez-5.54.tar.xz
+RUN wget --no-check-certificate http://www.kernel.org/pub/linux/bluetooth/bluez-5.54.tar.xz -O /tmp/bluez/bluez-5.54.tar.xz
 WORKDIR /tmp/bluez
 RUN tar xvf bluez-5.54.tar.xz 
 WORKDIR /tmp/bluez/bluez-5.54

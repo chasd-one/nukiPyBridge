@@ -1,7 +1,7 @@
-from flask import Flask 
-from configparser import ConfigParser 
-import nuki 
-from nacl.public import PrivateKey 
+from flask import Flask
+from configparser import ConfigParser
+import nuki
+from nacl.public import PrivateKey
 from flask import jsonify
 import logging
 from pathlib import Path
@@ -32,8 +32,8 @@ print(config)
 def get_config():
     return config
 
-@app.route("/connect/<mac_address>/<name>")
-def connect(mac_address, name):
+@app.route("/connect/<mac_address>/<name>/<device_type>")
+def connect(mac_address, name, device_type):
     # generate the private key which must be kept secret
     keypair = PrivateKey.generate()
     myPublicKeyHex = keypair.public_key.__bytes__().hex()
@@ -42,7 +42,7 @@ def connect(mac_address, name):
     # id-type = 00 (app), 01 (bridge) or 02 (fob)
     # take 01 (bridge) if you want to make sure that the 'new state available'-flag is cleared on the Nuki if you read it out the state using this library
     myIDType = '01'
-    nuki.Nuki(mac_address, configfile).authenticateUser(myPublicKeyHex, myPrivateKeyHex, myID, myIDType, name)
+    nuki.Nuki(mac_address, configfile).authenticateUser(myPublicKeyHex, myPrivateKeyHex, myID, myIDType, name, device_type)
     config = parse_config()
     print(config)
     return "Connected to " + mac_address
@@ -65,9 +65,11 @@ def state(door):
 
 @app.route("/<door>/logs")
 def get_log_entries(door):
-    return jsonify(nuki.Nuki(config[door], configfile).getLogEntries(1, "%04x" % 0000))
+    return jsonify(nuki.Nuki(config[door], configfile).getLogEntries(1, "%04x" % 0000, "op"))
 
 def execute_action(type, door):
     return nuki.Nuki(config[door], configfile).lockAction(type).show()
 
 
+if __name__ == '__main__':
+    app.run(host="192.168.178.21", port=10000, debug=True)
